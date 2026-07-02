@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VOĽBY.SIM</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- XLSX -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- Shapefile -->
+<script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<style>
+  body { background:#070a10; color:#e5e7eb; font-family: system-ui; }
+
+  .card {
+    background:#0b1220;
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:16px;
+  }
+
+  .mono { font-family: ui-monospace, monospace; }
+
+  #map {
+    background: radial-gradient(#1f2937 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+</style>
+</head>
+
+<body class="p-4">
+
+<div class="max-w-[1600px] mx-auto space-y-4">
+
+  <!-- HEADER -->
+  <div class="card p-4 flex justify-between items-center">
+    <div>
+      <h1 class="text-xl font-bold">VOĽBY.SIM</h1>
+      <p class="text-xs text-gray-400">Election simulation engine (GIS-ready)</p>
+    </div>
+
+    <input id="fileInput" type="file" multiple
+      class="text-xs bg-gray-900 p-2 rounded border border-gray-700"/>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid grid-cols-12 gap-4">
+
+    <!-- MAP -->
+    <div class="col-span-7 card p-4">
+      <h2 class="text-sm font-bold mb-2">Map</h2>
+      <div id="map" class="h-[500px] flex items-center justify-center text-gray-500 text-xs">
+        Awaiting shapefile / geojson import
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="col-span-5 space-y-4">
+
+      <div class="card p-4">
+        <h2 class="text-sm font-bold mb-2">Dataset</h2>
+        <div id="datasetInfo" class="text-xs text-gray-400">No data loaded</div>
+      </div>
+
+      <div class="card p-4">
+        <h2 class="text-sm font-bold mb-2">Controls</h2>
+
+        <button id="runSim"
+          class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs p-2 rounded">
+          Run simulation
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card p-4">
+    <h2 class="text-sm font-bold mb-2">Municipal data</h2>
+    <div id="table" class="text-xs text-gray-400">No dataset</div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   1. DATA STORE (single source of truth)
+========================================================= */
+const DatasetStore = {
+  municipalities: [],
+  geometry: [],
+  votes: [],
+};
+
+/* =========================================================
+   2. XLSX ADAPTER (your voting file)
+========================================================= */
+const XLSXAdapter = {
+  parse(file) {
+    const wb = XLSX.read(file, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet);
+
+    return rows.map(r => ({
+      kraj: r["Kód kraja"],
+      okres: r["Názov okresu"],
+      obec: r["Názov obce"],
+      votes: r
+    }));
+  }
+};
+
+/* =========================================================
+   3. SHAPEFILE ADAPTER (obec_0.zip)
+========================================================= */
+const ShapefileAdapter = {
+  async parse(file) {
+    const buffer = await file.arrayBuffer();
+    const geo = await shp(buffer);
+
+    return geo.features.map(f => ({
+      id: f.properties.IDN4,
+      name: f.properties.NM4,
+      okres: f.properties.NM3,
+      kraj: f.properties.NM2,
+      geometry: f.geometry
+    }));
+  }
+};
+
+/* =========================================================
+   4. LOADER (THE PLUG ROUTER)
+========================================================= */
+async function loadFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+
+  if (ext === "xlsx") {
+    const buf = await file.arrayBuffer();
+    DatasetStore.votes = XLSXAdapter.parse(buf);
+  }
+
+  if (ext === "zip") {
+    DatasetStore.geometry = await ShapefileAdapter.parse(file);
+  }
+
+  renderUI();
+}
+
+/* =========================================================
+   5. SIMPLE SIM ENGINE (placeholder hook)
+========================================================= */
+function runSimulation() {
+  alert("Simulation hook ready — plug your D'Hondt logic here");
+}
+
+/* =========================================================
+   6. UI RENDER
+========================================================= */
+function renderUI() {
+  document.getElementById("datasetInfo").innerHTML = `
+    <div>Votes rows: ${DatasetStore.votes.length}</div>
+    <div>Geometry features: ${DatasetStore.geometry.length}</div>
+  `;
+
+  document.getElementById("table").innerHTML = `
+    <div>Loaded dataset ready for processing.</div>
+  `;
+}
+
+/* =========================================================
+   7. EVENT WIRING
+========================================================= */
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  for (const file of e.target.files) {
+    await loadFile(file);
+  }
+});
+
+document.getElementById("runSim").addEventListener("click", runSimulation);
+</script>
+
+</body>
+</html>
