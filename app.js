@@ -1,0 +1,549 @@
+/* ============================================================
+   VOĽBY.SIM — application logic
+   ============================================================ */
+
+// ---------- derived baseline stats ----------
+const TYPE_AVG_TURNOUT = { rural: 0, urban: 0 };
+(function computeTypeAverages() {
+  const acc = { rural: [0, 0], urban: [0, 0] }; // [sum, count]
+  MUNICIPALITIES.forEach(m => { acc[m.type][0] += m.baseTurnout; acc[m.type][1] += 1; });
+  TYPE_AVG_TURNOUT.rural = acc.rural[0] / acc.rural[1];
+  TYPE_AVG_TURNOUT.urban = acc.urban[0] / acc.urban[1];
+})();
+
+const NATIONAL_BASELINE = {}; // party id -> weighted national baseline %
+// ---------- lookup indexes (PERFORMANCE) ----------
+const OKRES_INDEX = {};
+
+(function buildIndexes() {
+  MUNICIPALITIES.forEach(m => {
+    if (!OKRES_INDEX[m.okres]) OKRES_INDEX[m.okres] = [];
+    OKRES_INDEX[m.okres].push(m);
+  });
+})();
+(function computeNationalBaseline() {
+  let totalVotes = 0;
+  const partySums = {}; PARTIES.forEach(p => partySums[p.id] = 0);
+  MUNICIPALITIES.forEach(m => {
+    const votes = m.registeredVoters * m.baseTurnout;
+    totalVotes += votes;
+    PARTIES.forEach(p => { partySums[p.id] += votes * (m.baseShares[p.id] / 100); });
+  });
+  PARTIES.forEach(p => { NATIONAL_BASELINE[p.id] = (partySums[p.id] / totalVotes) * 100; });
+})();
+
+// ---------- global state ----------
+const state = {
+  turnout: { rural: TYPE_AVG_TURNOUT.rural, urban: TYPE_AVG_TURNOUT.urban },
+  partyTargets: {}, // party id -> slider target (normalised live)
+  filter: { kraj: 'ALL', okres: null, type: 'ALL', q: '' },
+  sim: { running: false, reported: new Set(), queue: [], timer: null, startedAt: 0, durationMs: 30000, order: 'rural-first', locked: {} },
+};
+PARTIES.forEach(p => { state.partyTargets[p.id] = NATIONAL_BASELINE[p.id]; });
+
+// ---------- swing / turnout computation ----------
+function normalisedTargets() {
+  const sum = PARTIES.reduce((s, p) => s + Math.max(0, state.partyTargets[p.id]), 0) || 1;
+  const out = {};
+  PARTIES.forEach(p => { out[p.id] = (Math.max(0, state.partyTargets[p.id]) / sum) * 100; });
+  return out;
+}
+
+function swingDeltas() {
+  const targets = normalisedTargets();
+  const d = {};
+  PARTIES.forEach(p => { d[p.id] = targets[p.id] - NATIONAL_BASELINE[p.id]; });
+  return d;
+}
+
+// Universal (uniform national) swing applied to one municipality, plus turnout model.
+function computeMuniResult(m, deltas) {
+  let shares = PARTIES.map(p => Math.max(0, m.baseShares[p.id] + deltas[p.id]));
+  const sum = shares.reduce((a, b) => a + b, 0) || 1;
+  shares = shares.map(v => (v / sum) * 100);
+
+  const turnoutMultiplier = state.turnout[m.type] / TYPE_AVG_TURNOUT[m.type];
+  let votesCast = Math.round(m.registeredVoters * m.baseTurnout * turnoutMultiplier);
+  votesCast = Math.min(votesCast, m.registeredVoters);
+  votesCast = Math.max(votesCast, 0);
+
+  const votes = {};
+  PARTIES.forEach((p, i) => { votes[p.id] = Math.round(votesCast * (shares[i] / 100)); });
+
+  return { votesCast, votes, shares: Object.fromEntries(PARTIES.map((p, i) => [p.id, shares[i]])) };
+}
+
+function winnerOf(votes) {
+  let best = null, bestV = -1, secondV = -1;
+  PARTIES.forEach(p => {
+    const v = votes[p.id];
+    if (v > bestV) { secondV = bestV; bestV = v; best = p.id; }
+    else if (v > secondV) { secondV = v; }
+  });
+  const total = PARTIES.reduce((s, p) => s + votes[p.id], 0) || 1;
+  const margin = ((bestV - Math.max(secondV, 0)) / total) * 100;
+  return { party: best, margin };
+}
+
+// ---------- D'Hondt allocation ----------
+function dhondt(votesByParty, seats = 150, thresholdFrac = 0.05) {
+  const total = PARTIES.reduce((s, p) => s + (votesByParty[p.id] || 0), 0) || 1;
+  const eligible = PARTIES.filter(p => (votesByParty[p.id] || 0) / total >= thresholdFrac);
+  const counts = {}; PARTIES.forEach(p => counts[p.id] = 0);
+  const quotients = [];
+  eligible.forEach(p => {
+    for (let d = 1; d <= seats; d++) {
+      quotients.push({ id: p.id, q: (votesByParty[p.id] || 0) / d });
+    }
+  });
+  quotients.sort((a, b) => b.q - a.q);
+  for (let i = 0; i < seats && i < quotients.length; i++) counts[quotients[i].id]++;
+  return counts;
+}
+
+// ---------- randomize with variety ----------
+function randomizeParties() {
+  const r = Math.random;
+  PARTIES.forEach(p => {
+    const mode = r();
+    let factor;
+    if (mode < 0.15) factor = 0.25 + r() * 0.35;       // collapse
+    else if (mode < 0.3) factor = 1.6 + r() * 1.1;      // surge
+    else factor = 0.75 + r() * 0.6;                     // normal wobble
+    state.partyTargets[p.id] = Math.max(0.3, NATIONAL_BASELINE[p.id] * factor + (r() - 0.5) * 3);
+  });
+  syncPartyControlsFromState();
+  renderAll();
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+function currentMuniResult(m) {
+  if (state.sim.locked[m.id]) return state.sim.locked[m.id];
+  return computeMuniResult(m, swingDeltas());
+}
+
+function isReported(m) {
+  return !state.sim.running && state.sim.reported.size === 0 ? true : state.sim.reported.has(m.id);
+}
+
+function aggregateVotes(municipalities) {
+  const votes = {}; PARTIES.forEach(p => votes[p.id] = 0);
+  let total = 0, registered = 0;
+  municipalities.forEach(m => {
+    if (!isReported(m)) return;
+    const r = currentMuniResult(m);
+    PARTIES.forEach(p => votes[p.id] += r.votes[p.id]);
+    total += r.votesCast;
+    registered += m.registeredVoters;
+  });
+  return { votes, total, registered };
+}
+
+function hslShade(hex, marginPct) {
+  // margin 0-40+ -> lightness travel; bigger margin = darker/richer
+  const c = hexToHsl(hex);
+  const t = Math.min(1, marginPct / 35);
+  const l = c.l * (1 - t * 0.55); // darken toward saturated
+  const s = Math.min(100, c.s * (0.7 + t * 0.5));
+  return `hsl(${c.h}, ${s}%, ${l}%)`;
+}
+function hexToHsl(hex) {
+  let r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+
+// ---- map (hex cartogram at okres level) ----
+function renderMap() {
+  const container = $('#map');
+  container.innerHTML = '';
+  REGIONS.forEach(region => {
+    const box = document.createElement('div');
+    box.className = 'kraj-box';
+    box.style.gridArea = region.id.toLowerCase();
+    box.dataset.kraj = region.id;
+
+    const label = document.createElement('div');
+    label.className = 'kraj-label';
+    label.textContent = region.name;
+    box.appendChild(label);
+
+    const hexWrap = document.createElement('div');
+    hexWrap.className = 'hex-wrap';
+
+    region.okresy.forEach(okresName => {
+      const munis = OKRES_INDEX[okresName] || [];
+      const { votes, total } = aggregateVotes(munis);
+      const hex = document.createElement('div');
+      hex.className = 'hex';
+      hex.dataset.okres = okresName;
+      hex.title = okresName;
+
+      if (total === 0) {
+        hex.classList.add('pending');
+        hex.style.background = '#20242e';
+      } else {
+        const w = winnerOf(votes);
+        const party = PARTIES.find(p => p.id === w.party);
+        hex.style.background = hslShade(party.color, w.margin);
+        if (state.sim.running && [...munis].some(m => state.sim.reported.has(m.id)) && !munis.every(m => isReported(m))) {
+          hex.classList.add('partial');
+        }
+      }
+      const rep = munis.filter(isReported).length;
+      hex.innerHTML = `<span class="hex-pct">${Math.round((rep / munis.length) * 100)}%</span>`;
+      hex.addEventListener('click', () => openOkresDetail(okresName));
+      hexWrap.appendChild(hex);
+    });
+
+    box.appendChild(hexWrap);
+    box.addEventListener('click', (e) => { if (e.target === box || e.target === label) setFilterKraj(region.id); });
+    container.appendChild(box);
+  });
+}
+
+function openOkresDetail(okresName) {
+  state.filter.okres = okresName;
+  state.filter.kraj = MUNICIPALITIES.find(m => m.okres === okresName).kraj;
+  $('#filter-kraj').value = state.filter.kraj;
+  renderTable();
+  $('#panel-table').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function setFilterKraj(krajId) {
+  state.filter.kraj = state.filter.kraj === krajId ? 'ALL' : krajId;
+  state.filter.okres = null;
+  $('#filter-kraj').value = state.filter.kraj;
+  renderTable();
+}
+
+// ---- national bar + ticker ----
+function renderNational() {
+  const all = MUNICIPALITIES;
+  const { votes, total, registered } = aggregateVotes(all);
+  const reportedCount = state.sim.reported.size || (state.sim.running ? 0 : all.length);
+  const pctCounted = state.sim.reported.size === 0 && !state.sim.running ? 100 : Math.round((state.sim.reported.size / all.length) * 100);
+
+  const bar = $('#national-bar'); bar.innerHTML = '';
+  const sorted = [...PARTIES].sort((a, b) => votes[b.id] - votes[a.id]);
+  sorted.forEach(p => {
+    const pct = total ? (votes[p.id] / total) * 100 : 0;
+    const seg = document.createElement('div');
+    seg.className = 'bar-seg';
+    seg.style.width = pct + '%';
+    seg.style.background = p.color;
+    seg.title = `${p.short} ${pct.toFixed(1)}%`;
+    bar.appendChild(seg);
+  });
+
+  const legend = $('#national-legend'); legend.innerHTML = '';
+  sorted.forEach(p => {
+    const pct = total ? (votes[p.id] / total) * 100 : 0;
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<span class="swatch" style="background:${p.color}"></span>
+      <span class="legend-name">${p.short}</span>
+      <span class="legend-pct">${pct.toFixed(1)}%</span>`;
+    legend.appendChild(row);
+  });
+
+  $('#ticker-counted').textContent = `${pctCounted}% counted`;
+  $('#ticker-turnout').textContent = total && registered ? `turnout ${(total / registered * 100).toFixed(1)}%` : '—';
+  const lead = sorted[0];
+  $('#ticker-leader').innerHTML = total ? `<span class="swatch" style="background:${lead.color}"></span> ${lead.name} leading` : 'awaiting results';
+
+  renderSeats(votes);
+}
+
+function renderSeats(votes) {
+  const seats = dhondt(votes, 150, 0.05);
+  const order = [...PARTIES].sort((a, b) => seats[b.id] - seats[a.id]);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 600 320');
+  svg.setAttribute('class', 'hemicycle');
+
+  const seatSeq = [];
+  order.forEach(p => { for (let i = 0; i < seats[p.id]; i++) seatSeq.push(p.color); });
+  while (seatSeq.length < 150) seatSeq.push('#2a2f3a');
+
+  const rows = 8;
+  const rMin = 60, rMax = 280;
+  const radii = Array.from({ length: rows }, (_, i) => rMin + (i * (rMax - rMin)) / (rows - 1));
+  const weights = radii.map(r => r);
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  let counts = weights.map(w => Math.max(4, Math.round((w / wsum) * 150)));
+  let diff = 150 - counts.reduce((a, b) => a + b, 0);
+  counts[counts.length - 1] += diff;
+
+  let idx = 0;
+  counts.forEach((cnt, rIdx) => {
+    const r = radii[rIdx];
+    for (let i = 0; i < cnt; i++) {
+      const t = cnt === 1 ? 0.5 : i / (cnt - 1);
+      const angle = Math.PI - t * Math.PI; // 180deg -> 0deg
+      const cx = 300 + r * Math.cos(angle);
+      const cy = 300 - r * Math.sin(angle);
+      const c = document.createElementNS(svgNS, 'circle');
+      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 8);
+      c.setAttribute('fill', seatSeq[idx] || '#2a2f3a');
+      svg.appendChild(c);
+      idx++;
+    }
+  });
+
+  const host = $('#hemicycle-host');
+  host.innerHTML = '';
+  host.appendChild(svg);
+
+  const seatList = $('#seat-list'); seatList.innerHTML = '';
+  order.filter(p => seats[p.id] > 0).forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<span class="swatch" style="background:${p.color}"></span>
+      <span class="legend-name">${p.short}</span>
+      <span class="legend-pct">${seats[p.id]}</span>`;
+    seatList.appendChild(row);
+  });
+  const majority = 76;
+  $('#seat-total').textContent = `150 seats · ${majority} for a majority`;
+}
+
+// ---- municipality table ----
+function filteredMunicipalities() {
+  return MUNICIPALITIES.filter(m => {
+    if (state.filter.kraj !== 'ALL' && m.kraj !== state.filter.kraj) return false;
+    if (state.filter.okres && m.okres !== state.filter.okres) return false;
+    if (state.filter.type !== 'ALL' && m.type !== state.filter.type) return false;
+    if (state.filter.q && !m.name.toLowerCase().includes(state.filter.q.toLowerCase())) return false;
+    return true;
+  });
+}
+
+function renderTable() {
+  const tbody = $('#muni-tbody');
+  tbody.innerHTML = '';
+  const list = filteredMunicipalities().slice(0, 400);
+  list.forEach(m => {
+    const reported = isReported(m);
+    const r = currentMuniResult(m);
+    const w = reported ? winnerOf(r.votes) : null;
+    const party = w ? PARTIES.find(p => p.id === w.party) : null;
+    const tr = document.createElement('tr');
+    tr.dataset.type = m.type;
+    tr.dataset.id = m.id;
+    if (!reported) tr.classList.add('row-pending');
+    tr.innerHTML = `
+      <td>${m.name}</td>
+      <td class="muted">${m.okres}</td>
+      <td><span class="pill pill-${m.type}">${m.type === 'urban' ? 'urban' : 'rural'}</span></td>
+      <td class="num">${m.registeredVoters.toLocaleString()}</td>
+      <td class="num">${reported ? r.votesCast.toLocaleString() : '—'}</td>
+      <td class="num">${reported ? ((r.votesCast / m.registeredVoters) * 100).toFixed(1) + '%' : '—'}</td>
+      <td>${party ? `<span class="swatch" style="background:${party.color}"></span> ${party.short} <span class="muted">(+${w.margin.toFixed(1)})</span>` : '<span class="muted">awaiting</span>'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  $('#table-count').textContent = `${list.length} of ${filteredMunicipalities().length} shown`;
+}
+
+function flashType(type) {
+  $$(`.hex`).forEach(h => {}); // hexes are okres-level; flash table + region boxes instead
+  $$(`tr[data-type="${type}"]`).forEach(tr => {
+    tr.classList.add('flash');
+    setTimeout(() => tr.classList.remove('flash'), 900);
+  });
+  $$('.kraj-box').forEach(b => {
+    b.classList.add('flash-box');
+    setTimeout(() => b.classList.remove('flash-box'), 900);
+  });
+}
+
+// ---- party controls ----
+function syncPartyControlsFromState() {
+  PARTIES.forEach(p => {
+    const input = document.querySelector(`input[data-party="${p.id}"]`);
+    if (input) input.value = state.partyTargets[p.id].toFixed(1);
+    const out = document.querySelector(`output[data-party-out="${p.id}"]`);
+    if (out) out.textContent = normalisedTargets()[p.id].toFixed(1) + '%';
+  });
+}
+
+function buildPartyControls() {
+  const host = $('#party-controls');
+  host.innerHTML = '';
+  PARTIES.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'party-row';
+    row.innerHTML = `
+      <div class="party-row-head">
+        <span class="swatch" style="background:${p.color}"></span>
+        <span class="party-name">${p.name}</span>
+        <output data-party-out="${p.id}">${p.base.toFixed(1)}%</output>
+      </div>
+      <input type="range" min="0" max="45" step="0.5" value="${p.base}" data-party="${p.id}">
+    `;
+    host.appendChild(row);
+    row.querySelector('input').addEventListener('input', (e) => {
+      state.partyTargets[p.id] = parseFloat(e.target.value);
+      syncPartyControlsFromState();
+      renderAll();
+    });
+  });
+}
+
+// ---- simulation engine ----
+function buildQueue() {
+  const scored = MUNICIPALITIES.map(m => {
+    let base = Math.random();
+    if (state.sim.order === 'rural-first') base = m.type === 'rural' ? base * 0.65 : base * 0.65 + 0.35;
+    else if (state.sim.order === 'urban-first') base = m.type === 'urban' ? base * 0.65 : base * 0.65 + 0.35;
+    return { id: m.id, score: base };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  return scored.map(s => s.id);
+}
+
+function startSimulation() {
+  stopSimulation(false);
+  state.sim.reported = new Set();
+  state.sim.locked = {};
+  state.sim.queue = buildQueue();
+  state.sim.running = true;
+  state.sim.startedAt = Date.now();
+  state.sim.durationMs = parseInt($('#speed-slider').value, 10) * 1000;
+  $('#btn-start').textContent = '⟳ Running…';
+  $('#btn-start').disabled = true;
+  $('#btn-reset').disabled = false;
+
+  const tickMs = 150;
+  const totalTicks = Math.max(1, Math.round(state.sim.durationMs / tickMs));
+  let tick = 0;
+  const perTick = Math.max(1, Math.ceil(state.sim.queue.length / totalTicks));
+
+  state.sim.timer = setInterval(() => {
+    tick++;
+    const deltas = swingDeltas();
+    for (let i = 0; i < perTick && state.sim.queue.length; i++) {
+      const id = state.sim.queue.shift();
+      const m = MUNICIPALITIES.find(x => x.id === id);
+      state.sim.locked[id] = computeMuniResult(m, deltas);
+      state.sim.reported.add(id);
+    }
+    renderAll();
+    if (state.sim.queue.length === 0) {
+      finishSimulation();
+    }
+  }, tickMs);
+}
+
+function finishSimulation() {
+  clearInterval(state.sim.timer);
+  state.sim.running = false;
+  $('#btn-start').textContent = '▶ Start count';
+  $('#btn-start').disabled = false;
+  $('#ticker-status').textContent = 'FINAL RESULT';
+  $('#ticker-status').classList.add('final');
+}
+
+function stopSimulation(reRender = true) {
+  if (state.sim.timer) clearInterval(state.sim.timer);
+  state.sim.timer = null;
+  state.sim.running = false;
+  $('#ticker-status').textContent = 'LIVE';
+  $('#ticker-status').classList.remove('final');
+  if (reRender) renderAll();
+}
+
+function resetSimulation() {
+  stopSimulation(false);
+  state.sim.reported = new Set();
+  state.sim.locked = {};
+  $('#btn-start').textContent = '▶ Start count';
+  $('#btn-start').disabled = false;
+  $('#ticker-status').textContent = 'READY';
+  $('#ticker-status').classList.remove('final');
+  renderAll();
+}
+
+// ---- wire up static controls ----
+function wireControls() {
+  $('#turnout-rural').addEventListener('input', (e) => {
+    state.turnout.rural = parseFloat(e.target.value) / 100;
+    $('#turnout-rural-out').textContent = e.target.value + '%';
+    flashType('rural');
+    renderAll();
+  });
+  $('#turnout-urban').addEventListener('input', (e) => {
+    state.turnout.urban = parseFloat(e.target.value) / 100;
+    $('#turnout-urban-out').textContent = e.target.value + '%';
+    flashType('urban');
+    renderAll();
+  });
+  $('#turnout-rural').value = Math.round(TYPE_AVG_TURNOUT.rural * 100);
+  $('#turnout-urban').value = Math.round(TYPE_AVG_TURNOUT.urban * 100);
+  $('#turnout-rural-out').textContent = $('#turnout-rural').value + '%';
+  $('#turnout-urban-out').textContent = $('#turnout-urban').value + '%';
+
+  $('#btn-random').addEventListener('click', randomizeParties);
+  $('#btn-reset-parties').addEventListener('click', () => {
+    PARTIES.forEach(p => state.partyTargets[p.id] = NATIONAL_BASELINE[p.id]);
+    syncPartyControlsFromState();
+    renderAll();
+  });
+
+  $('#btn-start').addEventListener('click', startSimulation);
+  $('#btn-reset').addEventListener('click', resetSimulation);
+  $('#order-select').addEventListener('change', (e) => { state.sim.order = e.target.value; });
+  $('#speed-slider').addEventListener('input', (e) => {
+    $('#speed-out').textContent = e.target.value + 's';
+  });
+  $('#speed-out').textContent = $('#speed-slider').value + 's';
+
+  $('#filter-kraj').addEventListener('change', (e) => {
+    state.filter.kraj = e.target.value; state.filter.okres = null; renderTable();
+  });
+  $('#filter-type').addEventListener('change', (e) => { state.filter.type = e.target.value; renderTable(); });
+  $('#filter-q').addEventListener('input', (e) => { state.filter.q = e.target.value; renderTable(); });
+  $('#filter-clear').addEventListener('click', () => {
+    state.filter = { kraj: 'ALL', okres: null, type: 'ALL', q: '' };
+    $('#filter-kraj').value = 'ALL'; $('#filter-type').value = 'ALL'; $('#filter-q').value = '';
+    renderTable();
+  });
+
+  const krajSel = $('#filter-kraj');
+  REGIONS.forEach(r => {
+    const opt = document.createElement('option'); opt.value = r.id; opt.textContent = r.name;
+    krajSel.appendChild(opt);
+  });
+}
+
+function renderAll() {
+  renderMap();
+  renderNational();
+  renderTable();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  buildPartyControls();
+  wireControls();
+  renderAll();
+  $('#ticker-status').textContent = 'READY';
+});
