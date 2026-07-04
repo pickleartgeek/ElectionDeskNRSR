@@ -5,7 +5,7 @@ Beginning testing
 # Roadmap
 - Add past election results
 - Individual demographic adjustments
-- Better UI
+- Better UI *(is being worked on as of now)*
 - Revamped simulation logic
 
 # Current version: v0.1 - Alpha
