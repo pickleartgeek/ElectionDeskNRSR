@@ -1,4 +1,4 @@
-# SlovakiaElectionsTool
+# ElectionDeskNRSR
 A tool to visualise Slovakian 2023+2020 election results (+ more later possibly) down to the municipality. Includes an election night simulation.
 
 ## Features
