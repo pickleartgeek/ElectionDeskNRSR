@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="sk" data-lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Election Desk NRSR — Slovak elections, municipality by municipality</title>
+<meta name="description" content="Interactive map, simulator, live polls and party vote maps for Slovak parliamentary elections.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23fff'/%3E%3Ctext x='32' y='30' text-anchor='middle' font-family='Impact,Arial Narrow,sans-serif' font-weight='900' font-size='30' fill='%2338B6FF'%3EE%3C/text%3E%3Ctext x='32' y='57' text-anchor='middle' font-family='Impact,Arial Narrow,sans-serif' font-weight='900' font-size='30' fill='%23FF3131'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/landing.css">
+</head>
+<body>
+
+<div class="ticker" aria-hidden="true">
+  <span class="ticker-tag"><i></i> LIVE</span>
+  <div class="ticker-track"><div class="ticker-move" id="tickerMove"></div></div>
+</div>
+
+<header class="nav" id="nav">
+  <a class="wm" href="#top" aria-label="Election Desk NRSR">
+    <span class="wm-top">Election</span><span class="wm-bot"><b>Desk</b><i>NRSR</i></span>
+  </a>
+  <nav>
+    <a href="#polls" data-sk="Prieskumy" data-en="Polls">Prieskumy</a>
+    <a href="#inside" data-sk="Funkcie" data-en="Features">Funkcie</a>
+    <a href="#maps" data-sk="Mapy strán" data-en="Party maps">Mapy strán</a>
+    <a href="#about" data-sk="Dáta" data-en="Data">Dáta</a>
+  </nav>
+  <div class="nav-r">
+    <div class="lang" role="group" aria-label="Language"><button data-l="sk" class="on">SK</button><button data-l="en">EN</button></div>
+    <a class="cta sm" href="desk/index.html" data-sk="Otvoriť Desk →" data-en="Open the Desk →">Otvoriť Desk →</a>
+  </div>
+</header>
+
+<main id="top">
+<!-- ===================== HERO ===================== -->
+<section class="hero">
+  <div class="hero-bg" aria-hidden="true">
+    <div class="glow g1"></div><div class="glow g2"></div>
+    <div class="grid"></div>
+    <div class="bgword">ELECTION<br>DESK</div>
+  </div>
+  <div class="hero-in">
+    <div class="hero-copy">
+      <span class="pill"><i></i><span data-sk="NRSR 2027 · voľby najneskôr 28. 9. 2027" data-en="NRSR 2027 · election by 28 Sep 2027">NRSR 2027 · voľby najneskôr 28. 9. 2027</span></span>
+      <h1>
+        <span class="l1" data-sk="Slovensko," data-en="Slovakia,">Slovensko,</span>
+        <span class="l2" data-sk="obec" data-en="municipality">obec</span>
+        <span class="l3" data-sk="po obci." data-en="by municipality.">po obci.</span>
+      </h1>
+      <p class="lede" data-sk="Interaktívna mapa výsledkov, simulátor s demografickým posunom, prieskumy načítané naživo z Wikipédie a mapa hlasov pre každú stranu — všetko na úrovni 2 927 obcí."
+         data-en="An interactive results map, a simulator with demographic shifting, polls pulled live from Wikipedia and a vote map for every party — all down to 2,927 municipalities.">Interaktívna mapa výsledkov, simulátor s demografickým posunom, prieskumy načítané naživo z Wikipédie a mapa hlasov pre každú stranu — všetko na úrovni 2 927 obcí.</p>
+      <div class="hero-cta">
+        <a class="cta" href="desk/index.html" data-sk="Otvoriť Election Desk" data-en="Open Election Desk">Otvoriť Election Desk</a>
+        <a class="cta ghost" href="desk/index.html?polls=live" data-sk="Simulovať aktuálne prieskumy" data-en="Simulate today’s polls">Simulovať aktuálne prieskumy</a>
+      </div>
+      <div class="count" id="count" aria-label="Countdown">
+        <div><b id="cd-d">—</b><span data-sk="dní" data-en="days">dní</span></div>
+        <div><b id="cd-h">—</b><span data-sk="hodín" data-en="hours">hodín</span></div>
+        <div><b id="cd-m">—</b><span data-sk="minút" data-en="min">minút</span></div>
+        <div><b id="cd-s">—</b><span data-sk="sekúnd" data-en="sec">sekúnd</span></div>
+        <p data-sk="do posledného možného dňa volieb (28. 9. 2027) — dátum zatiaľ nie je vyhlásený" data-en="until the last possible election day (28 Sep 2027) — date not yet called">do posledného možného dňa volieb (28. 9. 2027) — dátum zatiaľ nie je vyhlásený</p>
+      </div>
+    </div>
+    <div class="hero-map" id="heroMap">
+      <img src="assets/hero-map.webp" alt="Map of Slovak municipalities coloured by 2023 winner" width="1050" height="600">
+      <div class="scan" aria-hidden="true"></div>
+      <div class="chip c1"><i style="background:#E31E3A"></i><span data-sk="Víťaz 2023" data-en="2023 winner">Víťaz 2023</span><b id="chipWin">SMER-SD</b></div>
+      <div class="chip c2"><b>2 927</b><span data-sk="obcí na mape" data-en="municipalities">obcí na mape</span></div>
+      <div class="chip c3"><b>150</b><span data-sk="kresiel · D’Hondt" data-en="seats · D’Hondt">kresiel · D’Hondt</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== LIVE POLLS ===================== -->
+<section class="polls" id="polls">
+  <div class="wrap">
+    <div class="sec-head light">
+      <span class="kick" data-sk="PRIESKUMY NAŽIVO" data-en="LIVE POLLS">PRIESKUMY NAŽIVO</span>
+      <h2 data-sk="Kde sú strany dnes" data-en="Where the parties stand today">Kde sú strany dnes</h2>
+      <p id="pollMeta" data-sk="Načítavam z Wikipédie…" data-en="Loading from Wikipedia…">Načítavam z Wikipédie…</p>
+    </div>
+    <div class="poll-grid">
+      <div class="poll-bars" id="pollBars"><div class="skel"></div></div>
+      <aside class="poll-side">
+        <div class="hemi-card">
+          <h3 data-sk="Projekcia kresiel" data-en="Seat projection">Projekcia kresiel</h3>
+          <div class="seatbar" id="seatBar"></div>
+          <div class="seatlegend" id="seatLegend"></div>
+          <p class="fine" data-sk="Vyhladený trend prieskumov prepočítaný na 100 % (D’Hondt, prah 5 %). Orientačné — nie predpoveď." data-en="Smoothed poll trend rescaled to 100 % (D’Hondt, 5 % threshold). Indicative — not a forecast.">Vyhladený trend prieskumov prepočítaný na 100 % (D’Hondt, prah 5 %). Orientačné — nie predpoveď.</p>
+        </div>
+        <a class="cta" href="desk/index.html?polls=live" data-sk="Preniesť do simulátora →" data-en="Send to the simulator →">Preniesť do simulátora →</a>
+      </aside>
+    </div>
+    <div class="tracker-card">
+      <div class="tracker-h"><h3 data-sk="Sledovač prieskumov" data-en="Poll tracker">Sledovač prieskumov</h3><span data-sk="Prejdite myšou alebo stlačte Prehrať" data-en="Hover, or press Replay">Prejdite myšou alebo stlačte Prehrať</span></div>
+      <div id="pollTracker"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FEATURES ===================== -->
+<section class="inside" id="inside">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kick" data-sk="ČO JE VNÚTRI" data-en="WHAT’S INSIDE">ČO JE VNÚTRI</span>
+      <h2 data-sk="Jedna obrazovka. Celé Slovensko." data-en="One screen. All of Slovakia.">Jedna obrazovka. Celé Slovensko.</h2>
+    </div>
+
+    <article class="feat reveal">
+      <div class="feat-copy">
+        <span class="num">01</span>
+        <h3 data-sk="Mapa po obciach" data-en="Municipality-level map">Mapa po obciach</h3>
+        <p data-sk="Krémová základná mapa s názvami miest, plynulými prechodmi medzi režimami a letom kamery. Prepínajte obce, okresy a kraje; voliteľne zapnite diaľnice a rýchlostné cesty."
+           data-en="A cream basemap with city labels, smooth transitions between modes and a camera that flies to your selection. Switch between municipalities, districts and regions — and optionally overlay motorways.">Krémová základná mapa s názvami miest, plynulými prechodmi medzi režimami a letom kamery. Prepínajte obce, okresy a kraje; voliteľne zapnite diaľnice a rýchlostné cesty.</p>
+      </div>
+      <a class="shot" href="desk/index.html"><span class="bar"><i></i><i></i><i></i></span><img loading="lazy" src="assets/shots/explorer.webp" alt="Explorer screenshot"></a>
+    </article>
+
+    <article class="feat flip reveal">
+      <div class="feat-copy">
+        <span class="num">02</span>
+        <h3 data-sk="Demografický posun" data-en="Demographic shifting">Demografický posun</h3>
+        <p data-sk="Posuňte podporu strany medzi seniormi, ženami či ľuďmi bez vyznania. Efekt sa v každej obci váži podľa sčítania 2021 — mestá a regióny reagujú rôzne."
+           data-en="Move a party’s support among seniors, women or the non-religious. The effect is weighted by the 2021 census in every municipality — cities and regions respond differently.">Posuňte podporu strany medzi seniormi, ženami či ľuďmi bez vyznania. Efekt sa v každej obci váži podľa sčítania 2021 — mestá a regióny reagujú rôzne.</p>
+      </div>
+      <a class="shot" href="desk/index.html"><span class="bar"><i></i><i></i><i></i></span><img loading="lazy" src="assets/shots/simulator.webp" alt="Simulator screenshot"></a>
+    </article>
+
+    <article class="feat reveal">
+      <div class="feat-copy">
+        <span class="num">03</span>
+        <h3 data-sk="Cesta k víťazstvu" data-en="Path to victory">Cesta k víťazstvu</h3>
+        <p data-sk="Pre každú stranu: o koľko bodov musí vyrásť, ktoré okresy sú na dosah, kde má nevyužité hlasy oproti demografii a aká je jej volebná DNA."
+           data-en="For every party: how many points it needs, which districts are within reach, where votes are untapped versus demographics, and what its voter DNA looks like.">Pre každú stranu: o koľko bodov musí vyrásť, ktoré okresy sú na dosah, kde má nevyužité hlasy oproti demografii a aká je jej volebná DNA.</p>
+      </div>
+      <a class="shot" href="desk/index.html"><span class="bar"><i></i><i></i><i></i></span><img loading="lazy" src="assets/shots/path.webp" alt="Path to victory window"></a>
+    </article>
+
+    <article class="feat flip reveal">
+      <div class="feat-copy">
+        <span class="num">04</span>
+        <h3 data-sk="Demografická vrstva" data-en="Demographic layer">Demografická vrstva</h3>
+        <p data-sk="Vek, pohlavie a náboženské vyznanie z posledného sčítania — ako vrstva mapy aj ako profil každej vybranej oblasti."
+           data-en="Age, sex and religion from the latest census — as a map layer and as a profile for any selected area.">Vek, pohlavie a náboženské vyznanie z posledného sčítania — ako vrstva mapy aj ako profil každej vybranej oblasti.</p>
+      </div>
+      <a class="shot" href="desk/index.html"><span class="bar"><i></i><i></i><i></i></span><img loading="lazy" src="assets/shots/demographics.webp" alt="Demographics layer"></a>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== PARTY MAP CAROUSEL ===================== -->
+<section class="maps" id="maps">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kick" data-sk="MAPY STRÁN" data-en="PARTY MAPS">MAPY STRÁN</span>
+      <h2 data-sk="Kde ktorá strana vyhráva hlasy" data-en="Where each party wins its votes">Kde ktorá strana vyhráva hlasy</h2>
+      <p data-sk="Výsledky NRSR 2023 — tmavšia farba znamená vyšší podiel v obci." data-en="NRSR 2023 results — darker means a higher share in the municipality.">Výsledky NRSR 2023 — tmavšia farba znamená vyšší podiel v obci.</p>
+    </div>
+    <div class="car-ctl"><button id="cPrev" aria-label="Previous">←</button><button id="cNext" aria-label="Next">→</button></div>
+  </div>
+  <div class="car" id="car" tabindex="0"></div>
+  <div class="car-dots" id="carDots"></div>
+</section>
+
+<!-- ===================== ABOUT ===================== -->
+<section class="about" id="about">
+  <div class="wrap about-grid">
+    <div><h4 data-sk="Dáta" data-en="Data">Dáta</h4><p data-sk="Výsledky voleb: Štatistický úrad SR. Hranice obcí: ÚGKK SR (ZBGIS). Sčítanie 2021: ŠÚ SR (vek, pohlavie, vyznanie)." data-en="Election results: Statistical Office of the SR. Municipal boundaries: ÚGKK SR (ZBGIS). Census 2021: ŠÚ SR (age, sex, religion).">Výsledky voleb: Štatistický úrad SR. Hranice obcí: ÚGKK SR (ZBGIS). Sčítanie 2021: ŠÚ SR (vek, pohlavie, vyznanie).</p></div>
+    <div><h4 data-sk="Naživo" data-en="Live">Naživo</h4><p data-sk="Prieskumy sa čítajú priamo z tabuľky na Wikipédii; logá a fotografie tiež. Cesty pochádzajú z OpenStreetMap." data-en="Polls are read straight from Wikipedia’s table; so are logos and photos. Roads come from OpenStreetMap.">Prieskumy sa čítajú priamo z tabuľky na Wikipédii; logá a fotografie tiež. Cesty pochádzajú z OpenStreetMap.</p></div>
+    <div><h4 data-sk="Poctivo" data-en="Honestly">Poctivo</h4><p data-sk="Simulátor a analýzy sú ilustratívne modely, nie predpovede. Žiadny model nenahradí hlasy voličov." data-en="The simulator and analyses are illustrative models, not forecasts. No model replaces voters.">Simulátor a analýzy sú ilustratívne modely, nie predpovede. Žiadny model nenahradí hlasy voličov.</p></div>
+  </div>
+</section>
+
+<section class="final">
+  <h2 data-sk="Voľby sa blížia. Majte Desk po ruke." data-en="The election is coming. Keep the Desk close.">Voľby sa blížia. Majte Desk po ruke.</h2>
+  <a class="cta big" href="desk/index.html" data-sk="Otvoriť Election Desk →" data-en="Open Election Desk →">Otvoriť Election Desk →</a>
+</section>
+</main>
+
+<footer class="foot">
+  <span class="wm sm"><span class="wm-top">Election</span><span class="wm-bot"><b>Desk</b><i>NRSR</i></span></span>
+  <span>© Election Desk NRSR · <span data-sk="nezávislý projekt" data-en="independent project">nezávislý projekt</span></span>
+</footer>
+
+<script src="assets/polls.js"></script>
+<script src="assets/landing-data.js"></script>
+<script src="assets/landing.js"></script>
+</body>
+</html>
