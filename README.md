@@ -37,3 +37,18 @@ Without internet the app falls back to the 2023 result and says so.
 - Roads: multi-class progressive load with IndexedDB cache; check the browser console for `[roads]` if none appear.
 - Grid backdrop from the landing page is used on the desk map; "Sčítané" banner fixed for light mode.
 - Screenshots in `screenshots/v4_*` use mocked road/poll data.
+- v4.1: Szövetség–Aliancia / Democrats Wikipedia titles fixed (was resolving to the Serbian party); polls panel folds PS+Demokrati when merged, cache bumped (edPolls2, 1 h); map keeps repainting the live count while panning.
+- v4.2: Szövetség lookup no longer falls back to a text search that landed on the Serbian party (explicit page + Slovak title "Magyar Szövetség – Maďarská aliancia"); landing poll window uses the same smoothed numbers as the tracker, shown as party cards; hover no longer redraws the whole map; map modes ordered Kraje › Okresy › Obce › Body › Demografia, and clicking outside the selected okres/kraj selects that area as a whole; new "Mystery night" (random hidden result, revealed after the count) and "President: runoff" head-to-head simulator (illustrative, editable voter-transfer sliders).
+- v4.3: emoji removed from buttons; a lone 'Democrats' column in the newest polls is treated as the joint PS–Demokrati list; poll cards/rows all fade the leader photo into the party colour, with party logo beside the name and a tonal logo watermark; logos now also come from Wikidata (P154) so OĽaNO / Szövetség resolve.
+- v4.4: party logos back to Wikipedia page images (Wikidata only as fallback when none); Hlas leader is Matúš Šutaj Eštok; watermark logos use white-to-transparent high-contrast filter.
+- v4.5: realistic swing geography in the simulator (toggle, default on; build/backtest.py = 2020→2023 backtest), PS+Demokrati folded in all poll views so landing/desk/tracker agree, SaS leader Gröhling, more candidate Wikipedia titles for KDH/Republika/Sme rodina logos on the landing page.
+- v4.6: PREZ 2019 rounds 1 and 2 added as elections (real municipal results); 2019 results (Čaputová/Šefčovič/Harabin/Kotleba) added as political-geography predictors for the Voter DNA and swing model (2020→2023 backtest error 2.92→2.88 pp).
+- v4.6.1: Čaputová is blue.
+- v4.7: the desk results leaderboard uses the landing poll-card style (leader photo fading into the party colour, logo beside the name, tonal watermark; top 3 big, rest compact).
+- v4.8: election-night show (live leaderboard FLIP + number tweening, lead-change flash and toast, seat pop, scanning map glow, pulsing LIVE, shimmering progress, 'Election called' band + confetti at the end; reduced-motion respected). UI sweep (tools/ui_sweep.js): fixed page-wide horizontal overflow from the party-map carousel below 1920 px, wrapping header under 1280 px, collapsed legend on phones.
+
+## v4.9
+- Projection screen replaces the old 'called' banner when the count finishes (hemicycle, results, possible majorities, re-run / close).
+- Live probability panel during the count: who finishes first, bloc/coalition majority odds, seat ranges. Model estimate (bootstrap over counted municipalities by size group); presidential elections show win probability only.
+- Live panel has three views: Nights (100-dot waffle of simulated election nights), Needle (lean dial gov vs opposition), Race (runners on a track).
+- Mystery night now works in every election (2020 parliamentary, all presidential rounds use that election's own result as the baseline; live polls only for 2023). Count-time sweeping shine animations removed; top-3 leaderboard cards always use white text.

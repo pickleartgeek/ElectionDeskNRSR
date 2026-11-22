@@ -8,7 +8,7 @@
 const PAGE = 'Opinion_polling_for_the_next_Slovak_parliamentary_election';
 const API = 'https://en.wikipedia.org/w/api.php?action=parse&format=json&formatversion=2&origin=*&prop=text&disableeditsection=1&redirects=1&page=' + PAGE;
 const SOURCE_URL = 'https://en.wikipedia.org/wiki/' + PAGE;
-const CK = 'edPolls1', TTL = 3*3600e3;
+const CK = 'edPolls2', TTL = 1*3600e3;
 
 // column header text -> party slug used by the desk (NRSR 2023 roster)
 const COLS = [
@@ -150,6 +150,10 @@ function series(rows, slug, k){
 const DAY = 864e5;
 // PS–Demokrati: if the recent polls list a joint column, fold older PS + Demokrati rows into one bloc so the series are comparable
 function prep(rows){
+  // newest tables list the joint PS–Demokrati ticket under the "Democrats" header: Democrats without PS = the joint list
+  rows = rows.map(r => { if(r.v.demokrati != null && r.v.ps == null && r.v.ps_demokrati == null){ const v = Object.assign({}, r.v); v.ps_demokrati = v.demokrati; delete v.demokrati; return Object.assign({}, r, { v }); } return r; });
+  // PS and Demokrati run as one list (the simulator default): fold rows that list them separately, so landing, desk, tracker and trend agree
+  rows = rows.map(r => { if(r.v.ps != null && r.v.demokrati != null && r.v.ps_demokrati == null){ const v = Object.assign({}, r.v); v.ps_demokrati = v.ps + v.demokrati; delete v.ps; delete v.demokrati; return Object.assign({}, r, { v }); } return r; });
   const coal = rows.slice(0, Math.min(8, rows.length)).some(r => r.v.ps_demokrati != null);
   return rows.map(r => {
     const v = Object.assign({}, r.v);
